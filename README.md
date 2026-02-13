@@ -17,14 +17,14 @@ A high-performance client-side vector database built with Rust/WebAssembly and I
 ┌─────────────────────────────────┐
 │   TypeScript API (wrapper.ts)   │
 ├─────────────────────────────────┤
-│    WASM Module (Rust)            │
-│  - HNSW Index                    │
-│  - Distance Metrics              │
-│  - Vector Operations             │
+│    WASM Module (Rust)           │
+│  - HNSW Index                   │
+│  - Distance Metrics             │
+│  - Vector Operations            │
 ├─────────────────────────────────┤
-│   IndexedDB Storage              │
-│  - Persistent State              │
-│  - Automatic Serialization       │
+│   IndexedDB Storage             │
+│  - Persistent State             │
+│  - Automatic Serialization      │
 └─────────────────────────────────┘
 ```
 
