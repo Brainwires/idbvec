@@ -9,7 +9,7 @@ A high-performance client-side vector database built with Rust/WebAssembly and I
 - **🎯 ANN Search**: HNSW (Hierarchical Navigable Small World) index for approximate nearest neighbor search
 - **📊 Distance Metrics**: Cosine similarity, Euclidean distance, dot product
 - **🔧 Type-Safe**: Full TypeScript support
-- **📦 Zero Dependencies**: Self-contained WASM module
+- **📦 Zero Runtime Dependencies**: Self-contained WASM module
 
 ## Architecture
 
@@ -76,7 +76,7 @@ const results = await db.search(
 
 console.log(results)
 // [
-//   { id: 'doc1', score: 0.95, metadata: { title: 'Document 1', ... } },
+//   { id: 'doc1', distance: 0.05, metadata: { title: 'Document 1', ... } },
 //   ...
 // ]
 
@@ -122,6 +122,7 @@ const dot = await dotProduct(a, b) // 0.0
 | `dimensions` | number | - | Vector dimensionality |
 | `m` | number | 16 | Max connections per layer (higher = better recall, more memory) |
 | `efConstruction` | number | 200 | Construction quality (higher = better index, slower insert) |
+| `metric` | string | "euclidean" | Distance metric: "euclidean", "cosine", or "dotproduct" |
 
 ### Search Options
 
@@ -168,7 +169,7 @@ cp -r rust/idbvec/pkg/bundler public/idbvec-wasm
 ```tsx
 'use client'
 
-import { VectorDatabase } from '@/rust/idbvec/wrapper'
+import { VectorDatabase } from '@brainwires/idbvec'
 import { useEffect, useState } from 'react'
 
 export function VectorSearch() {

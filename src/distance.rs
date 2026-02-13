@@ -1,5 +1,5 @@
-/// Distance and similarity metrics for vectors
-/// Optimized for performance with potential SIMD support
+//! Distance and similarity metrics for vectors
+//! Optimized for performance with potential SIMD support
 
 /// Compute cosine similarity between two vectors
 /// Returns value in range [-1, 1], where 1 means identical direction
@@ -59,6 +59,7 @@ pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
 
 /// Compute Manhattan (L1) distance
 #[inline]
+#[allow(dead_code)]
 pub fn manhattan_distance(a: &[f32], b: &[f32]) -> f32 {
     a.iter()
         .zip(b.iter())
@@ -76,6 +77,7 @@ pub fn magnitude(v: &[f32]) -> f32 {
 }
 
 /// Normalize a vector to unit length (in-place)
+#[allow(dead_code)]
 pub fn normalize(v: &mut [f32]) {
     let mag = magnitude(v);
     if mag > 0.0 {
@@ -86,6 +88,7 @@ pub fn normalize(v: &mut [f32]) {
 }
 
 /// Create a normalized copy of a vector
+#[allow(dead_code)]
 pub fn normalized(v: &[f32]) -> Vec<f32> {
     let mut result = v.to_vec();
     normalize(&mut result);

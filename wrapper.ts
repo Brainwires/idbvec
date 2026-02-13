@@ -15,11 +15,17 @@ import type {
 
 export interface SearchResult {
   id: string
-  score: number
+  distance: number
   metadata?: Record<string, string>
 }
 
 export interface VectorRecord {
+  id: string
+  vector: Float32Array
+  metadata?: Record<string, string>
+}
+
+export interface GetResult {
   id: string
   vector: Float32Array
   metadata?: Record<string, string>
@@ -30,11 +36,14 @@ export interface SearchOptions {
   ef?: number // Search quality parameter (default: 50)
 }
 
+export type DistanceMetric = 'euclidean' | 'cosine' | 'dotproduct'
+
 export interface VectorDBConfig {
   name: string
   dimensions: number
   m?: number // Max connections per layer (default: 16)
   efConstruction?: number // Construction quality (default: 200)
+  metric?: DistanceMetric // Distance metric (default: 'euclidean')
 }
 
 /**
@@ -43,7 +52,9 @@ export interface VectorDBConfig {
 export class VectorDatabase {
   private wasmDB: WasmVectorDB | null = null
   private idb: IDBDatabase | null = null
-  private config: Required<VectorDBConfig>
+  private config: Required<Pick<VectorDBConfig, 'name' | 'dimensions' | 'm' | 'efConstruction'>> & { metric: DistanceMetric }
+  private saveTimer: ReturnType<typeof setTimeout> | null = null
+  private saveDebounceMs: number = 1000
 
   constructor(config: VectorDBConfig) {
     this.config = {
@@ -51,6 +62,7 @@ export class VectorDatabase {
       dimensions: config.dimensions,
       m: config.m ?? 16,
       efConstruction: config.efConstruction ?? 200,
+      metric: config.metric ?? 'euclidean',
     }
   }
 
@@ -68,14 +80,13 @@ export class VectorDatabase {
     const saved = await this.loadFromIndexedDB()
     if (saved) {
       this.wasmDB = wasmModule.VectorDB.deserialize(saved)
-      // console.log('Restored VectorDB from IndexedDB')
     } else {
       this.wasmDB = new wasmModule.VectorDB(
         this.config.dimensions,
         this.config.m,
-        this.config.efConstruction
+        this.config.efConstruction,
+        this.config.metric
       )
-      // console.log('Created new VectorDB')
     }
   }
 
@@ -91,8 +102,8 @@ export class VectorDatabase {
 
     this.wasmDB.insert(id, vector, metadata ?? null)
 
-    // Persist to IndexedDB
-    await this.saveToIndexedDB()
+    // Debounced persistence
+    this.debounceSave()
   }
 
   /**
@@ -102,13 +113,6 @@ export class VectorDatabase {
     if (!this.wasmDB) throw new Error('Database not initialized')
 
     for (const record of records) {
-      // console.log('🔍 Inserting to WASM:', {
-      //   id: record.id,
-      //   vectorLength: record.vector.length,
-      //   metadata: record.metadata,
-      //   metadataType: typeof record.metadata,
-      //   metadataKeys: record.metadata ? Object.keys(record.metadata) : null
-      // })
       this.wasmDB.insert(record.id, record.vector, record.metadata ?? null)
     }
 
@@ -133,6 +137,34 @@ export class VectorDatabase {
   }
 
   /**
+   * Get a vector and its metadata by ID
+   */
+  async get(id: string): Promise<GetResult | null> {
+    if (!this.wasmDB) throw new Error('Database not initialized')
+
+    const result = this.wasmDB.get(id)
+    if (result === null || result === undefined) return null
+
+    return result as GetResult
+  }
+
+  /**
+   * Check if a vector exists by ID
+   */
+  has(id: string): boolean {
+    if (!this.wasmDB) throw new Error('Database not initialized')
+    return this.wasmDB.has(id)
+  }
+
+  /**
+   * List all vector IDs
+   */
+  listIds(): string[] {
+    if (!this.wasmDB) throw new Error('Database not initialized')
+    return this.wasmDB.list_ids() as string[]
+  }
+
+  /**
    * Delete a vector by ID
    */
   async delete(id: string): Promise<boolean> {
@@ -141,10 +173,25 @@ export class VectorDatabase {
     const deleted = this.wasmDB.delete(id)
 
     if (deleted) {
-      await this.saveToIndexedDB()
+      this.debounceSave()
     }
 
     return deleted
+  }
+
+  /**
+   * Delete multiple vectors by ID
+   */
+  async deleteBatch(ids: string[]): Promise<number> {
+    if (!this.wasmDB) throw new Error('Database not initialized')
+
+    const count = this.wasmDB.delete_batch(ids)
+
+    if (count > 0) {
+      await this.saveToIndexedDB()
+    }
+
+    return count
   }
 
   /**
@@ -162,13 +209,60 @@ export class VectorDatabase {
     if (!this.wasmDB) throw new Error('Database not initialized')
 
     const wasmModule = await import('./pkg/bundler/idbvec')
+    this.wasmDB.free()
     this.wasmDB = new wasmModule.VectorDB(
       this.config.dimensions,
       this.config.m,
-      this.config.efConstruction
+      this.config.efConstruction,
+      this.config.metric
     )
 
     await this.saveToIndexedDB()
+  }
+
+  /**
+   * Export the database state as a JSON string
+   */
+  exportData(): string {
+    if (!this.wasmDB) throw new Error('Database not initialized')
+    return this.wasmDB.serialize()
+  }
+
+  /**
+   * Import database state from a JSON string
+   */
+  async importData(json: string): Promise<void> {
+    if (!this.wasmDB) throw new Error('Database not initialized')
+
+    const wasmModule = await import('./pkg/bundler/idbvec')
+    this.wasmDB.free()
+    this.wasmDB = wasmModule.VectorDB.deserialize(json)
+
+    await this.saveToIndexedDB()
+  }
+
+  /**
+   * Flush any pending saves to IndexedDB immediately
+   */
+  async flush(): Promise<void> {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+    }
+    await this.saveToIndexedDB()
+  }
+
+  /**
+   * Destroy the database completely (deletes IndexedDB)
+   */
+  async destroy(): Promise<void> {
+    this.close()
+
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(this.config.name)
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve()
+    })
   }
 
   /**
@@ -185,7 +279,6 @@ export class VectorDatabase {
         // CRITICAL: Handle versionchange event to auto-close when database is being deleted
         // This prevents "blocked" errors when trying to delete the database
         db.onversionchange = () => {
-          // console.log(`🔒 VectorDB "${this.config.name}" received versionchange event - closing connection`)
           db.close()
           this.idb = null
         }
@@ -200,6 +293,19 @@ export class VectorDatabase {
         }
       }
     })
+  }
+
+  /**
+   * Debounced save to IndexedDB
+   */
+  private debounceSave(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer)
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null
+      this.saveToIndexedDB()
+    }, this.saveDebounceMs)
   }
 
   /**
@@ -243,11 +349,27 @@ export class VectorDatabase {
    * Close the database
    */
   close(): void {
+    // Flush pending saves
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+    }
+
     if (this.idb) {
       this.idb.close()
       this.idb = null
     }
-    this.wasmDB = null
+    if (this.wasmDB) {
+      this.wasmDB.free()
+      this.wasmDB = null
+    }
+  }
+
+  /**
+   * Support for explicit resource management (using syntax)
+   */
+  [Symbol.dispose](): void {
+    this.close()
   }
 }
 

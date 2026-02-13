@@ -48,7 +48,7 @@ Open `example.html` in a browser to see a live demo. Or use directly:
 
 ```html
 <script type="module">
-  import init, { VectorDB } from './pkg/web/vector_db.js'
+  import init, { VectorDB } from './pkg/web/idbvec.js'
 
   await init()
 
@@ -92,7 +92,7 @@ await db.insert(
 // Search
 const results = await db.search(queryVector, { k: 10, ef: 50 })
 
-// Results: [{ id: 'doc1', score: 0.95, metadata: {...} }, ...]
+// Results: [{ id: 'doc1', distance: 0.05, metadata: {...} }, ...]
 ```
 
 ### 3. Distance Functions
@@ -112,7 +112,7 @@ const dist = await euclideanDistance(a, b) // 1.414
 1. **Browser Test**: Open `example.html`
 2. **CLI Test**:
    ```bash
-   cd rust/idbvec
+   cd ~/dev/idbvec
    cargo test
    ```
 
@@ -156,7 +156,7 @@ On modern hardware (M1/M2, Ryzen 5000+):
 ```tsx
 'use client'
 
-import { VectorDatabase } from '@/idbvec/wrapper'
+import { VectorDatabase } from '@brainwires/idbvec'
 
 export function Search() {
   const [db, setDb] = useState<VectorDatabase>()
@@ -180,7 +180,7 @@ export function Search() {
 ### React + Vite
 
 1. Copy WASM to public: `cp -r pkg/bundler public/wasm`
-2. Import in component: `import init from '/wasm/vector_db.js'`
+2. Import in component: `import init from '/wasm/idbvec.js'`
 
 ## 📚 API Reference
 
@@ -189,13 +189,19 @@ export function Search() {
 ```typescript
 class VectorDB {
   constructor(dimensions: number, m: number, ef_construction: number)
-  insert(id: string, vector: Float32Array, metadata: any): void
+  insert(id: string, vector: Float32Array, metadata: Record<string, string>): void
+  get(id: string): VectorRecord | undefined
+  has(id: string): boolean
   search(query: Float32Array, k: number, ef: number): SearchResult[]
   delete(id: string): boolean
+  delete_batch(ids: string[]): number
+  list_ids(): string[]
   size(): number
   serialize(): string
   static deserialize(json: string): VectorDB
 }
+
+// SearchResult: { id: string, distance: number, metadata: Record<string, string> }
 ```
 
 ### VectorDatabase (TypeScript Wrapper)
@@ -205,13 +211,23 @@ class VectorDatabase {
   constructor(config: VectorDBConfig)
   async init(): Promise<void>
   async insert(id: string, vector: Float32Array, metadata?: Record<string, string>): Promise<void>
+  async upsert(id: string, vector: Float32Array, metadata?: Record<string, string>): Promise<void>
   async insertBatch(records: VectorRecord[]): Promise<void>
   async search(query: Float32Array, options?: SearchOptions): Promise<SearchResult[]>
+  async get(id: string): Promise<VectorRecord | undefined>
+  async has(id: string): Promise<boolean>
   async delete(id: string): Promise<boolean>
+  async deleteBatch(ids: string[]): Promise<number>
+  async listIds(): Promise<string[]>
   size(): number
   async clear(): Promise<void>
+  async destroy(): Promise<void>
+  async exportData(): Promise<ExportedData>
+  static async importData(data: ExportedData, config: VectorDBConfig): Promise<VectorDatabase>
   close(): void
 }
+
+// SearchResult: { id: string, distance: number, metadata: Record<string, string> }
 ```
 
 ## 🐛 Troubleshooting

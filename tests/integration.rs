@@ -49,11 +49,11 @@ fn brute_force_knn(vectors: &[(String, Vec<f32>)], query: &[f32], k: usize) -> V
 fn public_types_are_constructable() {
     let sr = SearchResult {
         id: "test".into(),
-        score: 0.95,
+        distance: 0.95,
         metadata: None,
     };
     assert_eq!(sr.id, "test");
-    assert!((sr.score - 0.95).abs() < 1e-6);
+    assert!((sr.distance - 0.95).abs() < 1e-6);
 
     let mut meta = HashMap::new();
     meta.insert("key".into(), "value".into());
@@ -75,13 +75,13 @@ fn search_result_serialization_roundtrip() {
     meta.insert("text".into(), "hello world".into());
     let sr = SearchResult {
         id: "r1".into(),
-        score: 0.87,
+        distance: 0.87,
         metadata: Some(meta),
     };
     let json = serde_json::to_string(&sr).unwrap();
     let sr2: SearchResult = serde_json::from_str(&json).unwrap();
     assert_eq!(sr2.id, "r1");
-    assert!((sr2.score - 0.87).abs() < 1e-6);
+    assert!((sr2.distance - 0.87).abs() < 1e-6);
     assert_eq!(
         sr2.metadata.as_ref().unwrap().get("text").unwrap(),
         "hello world"

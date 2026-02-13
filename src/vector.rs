@@ -1,15 +1,17 @@
-/// Vector data structures and utilities
+//! Vector data structures and utilities
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// A vector with an ID and optional metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Vector {
     pub id: String,
     pub data: Vec<f32>,
 }
 
+#[allow(dead_code)]
 impl Vector {
     pub fn new(id: String, data: Vec<f32>) -> Self {
         Vector { id, data }
@@ -28,6 +30,7 @@ impl fmt::Display for Vector {
 
 /// Helper to create random vectors for testing
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn random_vector(dimensions: usize) -> Vec<f32> {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
