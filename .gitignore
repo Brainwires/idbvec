@@ -7,3 +7,5 @@ node_modules/
 wrapper.js
 wrapper.d.ts
 dist/
+test-results/
+playwright-report/

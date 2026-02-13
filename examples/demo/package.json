@@ -1,0 +1,13 @@
+{
+  "name": "idbvec-demo-tests",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "test:react": "npx playwright test --grep react-app",
+    "test:html": "npx playwright test --grep html-app"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}
