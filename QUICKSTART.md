@@ -112,7 +112,7 @@ const dist = await euclideanDistance(a, b) // 1.414
 1. **Browser Test**: Open `example.html`
 2. **CLI Test**:
    ```bash
-   cd rust/vector-db
+   cd rust/idbvec
    cargo test
    ```
 
