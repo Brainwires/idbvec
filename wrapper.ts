@@ -11,7 +11,7 @@
 // Adjust the path based on your build target (bundler/web/nodejs)
 import type {
   VectorDB as WasmVectorDB,
-} from './pkg/bundler/vector_db'
+} from './pkg/bundler/idbvec'
 
 export interface SearchResult {
   id: string
@@ -59,7 +59,7 @@ export class VectorDatabase {
    */
   async init(): Promise<void> {
     // Load WASM module (auto-initializes on import for bundler target)
-    const wasmModule = await import('./pkg/bundler/vector_db')
+    const wasmModule = await import('./pkg/bundler/idbvec')
 
     // Open IndexedDB
     this.idb = await this.openIndexedDB()
@@ -161,7 +161,7 @@ export class VectorDatabase {
   async clear(): Promise<void> {
     if (!this.wasmDB) throw new Error('Database not initialized')
 
-    const wasmModule = await import('./pkg/bundler/vector_db')
+    const wasmModule = await import('./pkg/bundler/idbvec')
     this.wasmDB = new wasmModule.VectorDB(
       this.config.dimensions,
       this.config.m,
@@ -258,7 +258,7 @@ export async function cosineSimilarity(
   a: Float32Array,
   b: Float32Array
 ): Promise<number> {
-  const wasmModule = await import('./pkg/bundler/vector_db')
+  const wasmModule = await import('./pkg/bundler/idbvec')
   return wasmModule.cosine_similarity(a, b)
 }
 
@@ -266,7 +266,7 @@ export async function euclideanDistance(
   a: Float32Array,
   b: Float32Array
 ): Promise<number> {
-  const wasmModule = await import('./pkg/bundler/vector_db')
+  const wasmModule = await import('./pkg/bundler/idbvec')
   return wasmModule.euclidean_distance(a, b)
 }
 
@@ -274,6 +274,6 @@ export async function dotProduct(
   a: Float32Array,
   b: Float32Array
 ): Promise<number> {
-  const wasmModule = await import('./pkg/bundler/vector_db')
+  const wasmModule = await import('./pkg/bundler/idbvec')
   return wasmModule.dot_product(a, b)
 }
