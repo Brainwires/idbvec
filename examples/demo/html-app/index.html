@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>idbvec HTML Demo</title>
+  </head>
+  <body>
+    <div id="app">
+      <h1><span class="accent">idbvec</span> HTML Demo</h1>
+      <p class="subtitle">WASM-powered vector database with IndexedDB persistence</p>
+
+      <!-- Stats -->
+      <div class="stats" id="stats">
+        <div class="stat-card">
+          <div class="value" id="stat-vectors">--</div>
+          <div class="label">Vectors</div>
+        </div>
+        <div class="stat-card">
+          <div class="value">4</div>
+          <div class="label">Dimensions</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="stat-metric">cosine</div>
+          <div class="label">Metric</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="stat-search-time">--</div>
+          <div class="label">Search Time</div>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div id="log" class="log hidden"></div>
+
+      <!-- Database Operations -->
+      <div class="section">
+        <h2>Database Operations</h2>
+        <div class="controls">
+          <button id="btn-insert">Insert Samples</button>
+          <button id="btn-list" class="secondary">List IDs</button>
+          <button id="btn-distance" class="secondary">Test Distance Fns</button>
+          <button id="btn-clear" class="danger">Clear All</button>
+          <select id="select-metric" class="select">
+            <option value="cosine">Cosine</option>
+            <option value="euclidean">Euclidean</option>
+            <option value="dotproduct">Dot Product</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="section">
+        <h2>Vector Search</h2>
+        <div class="controls">
+          <select id="select-query" class="select">
+            <option value="cat">cat</option>
+            <option value="dog">dog</option>
+            <option value="fish">fish</option>
+            <option value="bird">bird</option>
+            <option value="car">car</option>
+            <option value="truck">truck</option>
+            <option value="boat">boat</option>
+            <option value="plane">plane</option>
+            <option value="shark">shark</option>
+            <option value="whale">whale</option>
+          </select>
+          <button id="btn-search">Search (k=5)</button>
+          <button id="btn-get" class="secondary">Get by ID</button>
+          <button id="btn-delete" class="danger">Delete</button>
+        </div>
+        <div id="results-container" class="hidden">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ID</th>
+                <th>Distance</th>
+                <th>Metadata</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Distance Functions -->
+      <div id="distance-section" class="section hidden">
+        <h2>Standalone Distance Functions</h2>
+        <pre id="distance-output" class="log info"></pre>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
