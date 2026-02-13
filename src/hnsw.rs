@@ -11,29 +11,57 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
 
-/// Priority queue element for search
+/// Max-heap element: pop() returns the element with the LARGEST distance.
+/// Used for the result set (`nearest`) to evict the farthest neighbor.
 #[derive(Clone)]
-struct HeapElement {
+struct MaxDistElement {
     id: String,
     distance: f32,
 }
 
-impl PartialEq for HeapElement {
+impl PartialEq for MaxDistElement {
     fn eq(&self, other: &Self) -> bool {
         self.distance == other.distance
     }
 }
 
-impl Eq for HeapElement {}
+impl Eq for MaxDistElement {}
 
-impl PartialOrd for HeapElement {
+impl PartialOrd for MaxDistElement {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        // Reverse ordering for min-heap
+        self.distance.partial_cmp(&other.distance)
+    }
+}
+
+impl Ord for MaxDistElement {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap_or(Ordering::Equal)
+    }
+}
+
+/// Min-heap element: pop() returns the element with the SMALLEST distance.
+/// Used for the candidate queue to explore closest nodes first.
+#[derive(Clone)]
+struct MinDistElement {
+    id: String,
+    distance: f32,
+}
+
+impl PartialEq for MinDistElement {
+    fn eq(&self, other: &Self) -> bool {
+        self.distance == other.distance
+    }
+}
+
+impl Eq for MinDistElement {}
+
+impl PartialOrd for MinDistElement {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         other.distance.partial_cmp(&self.distance)
     }
 }
 
-impl Ord for HeapElement {
+impl Ord for MinDistElement {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap_or(Ordering::Equal)
     }
@@ -228,17 +256,18 @@ impl HNSWIndex {
     /// Search within a specific layer
     fn search_layer(&self, query: &[f32], entry_points: Vec<String>, ef: usize, layer: usize) -> Vec<String> {
         let mut visited = HashSet::new();
-        let mut candidates = BinaryHeap::new();
-        let mut nearest = BinaryHeap::new();
+        let mut candidates: BinaryHeap<MinDistElement> = BinaryHeap::new();
+        let mut nearest: BinaryHeap<MaxDistElement> = BinaryHeap::new();
 
         for ep in entry_points {
             let dist = self.distance_to(&ep, query);
-            candidates.push(HeapElement { id: ep.clone(), distance: dist });
-            nearest.push(HeapElement { id: ep.clone(), distance: dist });
+            candidates.push(MinDistElement { id: ep.clone(), distance: dist });
+            nearest.push(MaxDistElement { id: ep.clone(), distance: dist });
             visited.insert(ep);
         }
 
         while let Some(curr) = candidates.pop() {
+            // curr is the closest unexplored candidate
             let furthest_dist = nearest.peek().map(|h| h.distance).unwrap_or(f32::INFINITY);
 
             if curr.distance > furthest_dist {
@@ -253,11 +282,11 @@ impl HNSWIndex {
                             let furthest = nearest.peek().map(|h| h.distance).unwrap_or(f32::INFINITY);
 
                             if dist < furthest || nearest.len() < ef {
-                                candidates.push(HeapElement { id: neighbor_id.clone(), distance: dist });
-                                nearest.push(HeapElement { id: neighbor_id.clone(), distance: dist });
+                                candidates.push(MinDistElement { id: neighbor_id.clone(), distance: dist });
+                                nearest.push(MaxDistElement { id: neighbor_id.clone(), distance: dist });
 
                                 if nearest.len() > ef {
-                                    nearest.pop();
+                                    nearest.pop(); // removes the farthest element
                                 }
                             }
                         }
@@ -266,6 +295,7 @@ impl HNSWIndex {
             }
         }
 
+        // into_sorted_vec() returns ascending order = nearest first
         nearest.into_sorted_vec().into_iter().map(|h| h.id).collect()
     }
 
@@ -314,5 +344,313 @@ impl HNSWIndex {
         let random_val = (self.nodes.len() as f32 * 0.123456).fract();
         let layer = (-random_val.ln() * self.ml) as usize;
         layer.min(16) // Cap at 16 layers
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vector::random_vector_seeded;
+
+    /// Helper: create a deterministic vector from a seed
+    fn make_vec(dims: usize, seed: u64) -> Vec<f32> {
+        random_vector_seeded(dims, seed)
+    }
+
+    // ── Construction & basics ──────────────────────────────────────
+
+    #[test]
+    fn new_creates_empty_index() {
+        let idx = HNSWIndex::new(128, 16, 200);
+        assert_eq!(idx.dimensions, 128);
+        assert_eq!(idx.m, 16);
+        assert_eq!(idx.ef_construction, 200);
+        assert!(idx.entry_point.is_none());
+        assert_eq!(idx.nodes.len(), 0);
+    }
+
+    #[test]
+    fn first_insert_sets_entry_point() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        assert_eq!(idx.entry_point, Some("a".into()));
+        assert_eq!(idx.nodes.len(), 1);
+    }
+
+    #[test]
+    fn size_tracking_after_insertions() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        for i in 0..10 {
+            idx.insert(format!("v{}", i), make_vec(3, i as u64));
+        }
+        assert_eq!(idx.nodes.len(), 10);
+    }
+
+    // ── Insert & search correctness ────────────────────────────────
+
+    #[test]
+    fn insert_one_search_finds_it() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        let v = vec![1.0, 0.0, 0.0];
+        idx.insert("a".into(), v.clone());
+        let results = idx.search(&v, 1, 50);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "a");
+        assert!(results[0].1 < 1e-6); // distance ~0
+    }
+
+    #[test]
+    fn insert_two_search_returns_correct_order() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        let close = vec![1.0, 0.0, 0.0];
+        let far = vec![10.0, 10.0, 10.0];
+        idx.insert("close".into(), close.clone());
+        idx.insert("far".into(), far);
+
+        let results = idx.search(&close, 2, 50);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].0, "close");
+        assert!(results[0].1 < results[1].1);
+    }
+
+    #[test]
+    fn search_returns_k_sorted_by_distance() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        for i in 0..15 {
+            idx.insert(format!("v{}", i), make_vec(3, i as u64 * 7 + 42));
+        }
+        let query = make_vec(3, 999);
+        let results = idx.search(&query, 5, 50);
+        assert_eq!(results.len(), 5);
+        // Verify sorted by distance
+        for w in results.windows(2) {
+            assert!(w[0].1 <= w[1].1);
+        }
+    }
+
+    #[test]
+    fn search_k_greater_than_size_returns_all() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        idx.insert("b".into(), vec![0.0, 1.0, 0.0]);
+        let results = idx.search(&[0.5, 0.5, 0.0], 100, 200);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn search_empty_index_returns_empty() {
+        let idx = HNSWIndex::new(3, 16, 200);
+        let results = idx.search(&[1.0, 0.0, 0.0], 5, 50);
+        assert!(results.is_empty());
+    }
+
+    // ── Nearest-neighbor quality ───────────────────────────────────
+
+    #[test]
+    fn search_finds_true_nearest_neighbor() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        let target = vec![5.0, 5.0, 5.0];
+        let nearest = vec![5.1, 5.1, 5.1]; // very close to target
+        let far1 = vec![100.0, 0.0, 0.0];
+        let far2 = vec![0.0, 100.0, 0.0];
+
+        idx.insert("nearest".into(), nearest);
+        idx.insert("far1".into(), far1);
+        idx.insert("far2".into(), far2);
+
+        let results = idx.search(&target, 1, 50);
+        assert_eq!(results[0].0, "nearest");
+    }
+
+    #[test]
+    fn cluster_search_finds_cluster_before_outlier() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        // Cluster around origin
+        idx.insert("c0".into(), vec![0.1, 0.1, 0.1]);
+        idx.insert("c1".into(), vec![0.2, 0.0, 0.1]);
+        idx.insert("c2".into(), vec![0.0, 0.2, 0.1]);
+        // Outlier
+        idx.insert("outlier".into(), vec![50.0, 50.0, 50.0]);
+
+        let results = idx.search(&[0.0, 0.0, 0.0], 4, 50);
+        // All cluster members should come before outlier
+        let outlier_pos = results.iter().position(|(id, _)| id == "outlier").unwrap();
+        assert_eq!(outlier_pos, 3); // outlier is last
+    }
+
+    // ── Dimension validation ───────────────────────────────────────
+
+    #[test]
+    fn insert_wrong_dimension_is_ignored() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("good".into(), vec![1.0, 0.0, 0.0]);
+        idx.insert("bad".into(), vec![1.0, 0.0]); // wrong dimensions
+        assert_eq!(idx.nodes.len(), 1);
+        assert!(!idx.nodes.contains_key("bad"));
+    }
+
+    // ── Delete ─────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_existing_returns_true() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        assert!(idx.delete("a"));
+        assert_eq!(idx.nodes.len(), 0);
+    }
+
+    #[test]
+    fn delete_nonexistent_returns_false() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        assert!(!idx.delete("nope"));
+    }
+
+    #[test]
+    fn delete_entry_point_search_still_works() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        idx.insert("b".into(), vec![0.0, 1.0, 0.0]);
+        idx.insert("c".into(), vec![0.0, 0.0, 1.0]);
+
+        let entry = idx.entry_point.clone().unwrap();
+        idx.delete(&entry);
+
+        // Search still works with remaining nodes
+        let results = idx.search(&[0.5, 0.5, 0.0], 2, 50);
+        assert!(!results.is_empty());
+        // Deleted entry should not appear
+        for (id, _) in &results {
+            assert_ne!(id, &entry);
+        }
+    }
+
+    #[test]
+    fn delete_all_vectors_empties_index() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        idx.insert("b".into(), vec![0.0, 1.0, 0.0]);
+        idx.delete("a");
+        idx.delete("b");
+        assert_eq!(idx.nodes.len(), 0);
+        let results = idx.search(&[1.0, 0.0, 0.0], 5, 50);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn insert_delete_reinsert_same_id() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        idx.delete("a");
+        idx.insert("a".into(), vec![0.0, 1.0, 0.0]);
+        assert_eq!(idx.nodes.len(), 1);
+        let results = idx.search(&[0.0, 1.0, 0.0], 1, 50);
+        assert_eq!(results[0].0, "a");
+    }
+
+    // ── Serialization round-trip ───────────────────────────────────
+
+    #[test]
+    fn serialize_deserialize_preserves_search_results() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        idx.insert("b".into(), vec![0.0, 1.0, 0.0]);
+        idx.insert("c".into(), vec![0.0, 0.0, 1.0]);
+
+        let query = vec![0.9, 0.1, 0.0];
+        let results_before = idx.search(&query, 3, 50);
+
+        let json = serde_json::to_string(&idx).unwrap();
+        let idx2: HNSWIndex = serde_json::from_str(&json).unwrap();
+        let results_after = idx2.search(&query, 3, 50);
+
+        assert_eq!(results_before.len(), results_after.len());
+        for (a, b) in results_before.iter().zip(results_after.iter()) {
+            assert_eq!(a.0, b.0);
+            assert!((a.1 - b.1).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn serialize_empty_index() {
+        let idx = HNSWIndex::new(128, 16, 200);
+        let json = serde_json::to_string(&idx).unwrap();
+        let idx2: HNSWIndex = serde_json::from_str(&json).unwrap();
+        assert!(idx2.entry_point.is_none());
+        assert_eq!(idx2.nodes.len(), 0);
+        assert_eq!(idx2.dimensions, 128);
+    }
+
+    #[test]
+    fn serialize_after_deletions() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        idx.insert("b".into(), vec![0.0, 1.0, 0.0]);
+        idx.insert("c".into(), vec![0.0, 0.0, 1.0]);
+        idx.delete("b");
+
+        let json = serde_json::to_string(&idx).unwrap();
+        let idx2: HNSWIndex = serde_json::from_str(&json).unwrap();
+        assert_eq!(idx2.nodes.len(), 2);
+        assert!(!idx2.nodes.contains_key("b"));
+        // Search still works
+        let results = idx2.search(&[1.0, 0.0, 0.0], 2, 50);
+        assert_eq!(results.len(), 2);
+    }
+
+    // ── Connection integrity ───────────────────────────────────────
+
+    #[test]
+    fn connections_are_bidirectional() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        for i in 0..10 {
+            idx.insert(format!("v{}", i), make_vec(3, i as u64 * 13 + 1));
+        }
+
+        for (id, node) in &idx.nodes {
+            for (layer, neighbors) in node.connections.iter().enumerate() {
+                for neighbor_id in neighbors {
+                    let neighbor = idx.nodes.get(neighbor_id).unwrap();
+                    assert!(
+                        layer < neighbor.connections.len()
+                            && neighbor.connections[layer].contains(id),
+                        "Missing reverse connection: {} -> {} at layer {}",
+                        neighbor_id, id, layer
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn no_dangling_references_after_delete() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        for i in 0..10 {
+            idx.insert(format!("v{}", i), make_vec(3, i as u64 * 7 + 3));
+        }
+        idx.delete("v5");
+
+        for (_id, node) in &idx.nodes {
+            for neighbors in &node.connections {
+                assert!(!neighbors.contains("v5"), "Dangling reference to deleted node v5");
+            }
+        }
+    }
+
+    // ── Edge cases ─────────────────────────────────────────────────
+
+    #[test]
+    fn large_ef_does_not_panic() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        let results = idx.search(&[1.0, 0.0, 0.0], 1, 10000);
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn k_zero_returns_empty() {
+        let mut idx = HNSWIndex::new(3, 16, 200);
+        idx.insert("a".into(), vec![1.0, 0.0, 0.0]);
+        let results = idx.search(&[1.0, 0.0, 0.0], 0, 50);
+        assert!(results.is_empty());
     }
 }

@@ -28,13 +28,18 @@ impl fmt::Display for Vector {
 
 /// Helper to create random vectors for testing
 #[cfg(test)]
-pub fn random_vector(dimensions: usize) -> Vec<f32> {
+pub(crate) fn random_vector(dimensions: usize) -> Vec<f32> {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
 
     let hasher = RandomState::new().build_hasher();
     let seed = hasher.finish();
+    random_vector_seeded(dimensions, seed)
+}
 
+/// Helper to create deterministic random vectors from a seed
+#[cfg(test)]
+pub(crate) fn random_vector_seeded(dimensions: usize, seed: u64) -> Vec<f32> {
     let mut rng = seed;
     (0..dimensions)
         .map(|_| {
