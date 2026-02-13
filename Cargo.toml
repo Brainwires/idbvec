@@ -5,6 +5,10 @@ edition = "2021"
 description = "Client-side vector database built on IndexedDB with WASM"
 license = "MIT OR Apache-2.0"
 authors = ["nightness"]
+repository = "https://github.com/Brainwires/idbvec"
+keywords = ["vector", "database", "wasm", "indexeddb", "hnsw"]
+categories = ["database", "wasm"]
+readme = "README.md"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -1,0 +1,28 @@
+{
+  "name": "@brainwires/idbvec",
+  "version": "0.1.0",
+  "description": "Client-side vector database built on IndexedDB with WASM",
+  "main": "wrapper.js",
+  "types": "wrapper.d.ts",
+  "files": [
+    "wrapper.js",
+    "wrapper.d.ts",
+    "pkg/bundler/"
+  ],
+  "keywords": [
+    "vector",
+    "database",
+    "wasm",
+    "indexeddb",
+    "hnsw",
+    "ann"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Brainwires/idbvec.git"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
