@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vector Database Example</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button {
+      background: #0066cc;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover {
+      background: #0052a3;
+    }
+    .output {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .controls {
+      margin-bottom: 20px;
+    }
+    input {
+      padding: 8px;
+      margin: 5px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .status.success { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .status.info { background: #d1ecf1; color: #0c5460; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Vector Database Demo</h1>
+    <p>Client-side vector database using Rust/WASM + IndexedDB</p>
+
+    <div id="status" class="status info">Initializing...</div>
+
+    <div class="controls">
+      <h3>Operations</h3>
+      <button onclick="insertRandomVectors()">Insert 10 Random Vectors</button>
+      <button onclick="searchVectors()">Search Nearest Neighbors</button>
+      <button onclick="showStats()">Show Stats</button>
+      <button onclick="clearDatabase()">Clear Database</button>
+    </div>
+
+    <div class="controls">
+      <h3>Test Similarity</h3>
+      <input type="text" id="vec1" placeholder="Vector 1 (e.g., 1,0,0)" value="1,0,0">
+      <input type="text" id="vec2" placeholder="Vector 2 (e.g., 0,1,0)" value="0,1,0">
+      <button onclick="calculateSimilarity()">Calculate Similarity</button>
+    </div>
+
+    <div class="output" id="output">Output will appear here...</div>
+  </div>
+
+  <script type="module">
+    import init, { VectorDB, cosine_similarity, euclidean_distance } from './pkg/web/vector_db.js'
+
+    let db = null
+
+    async function initDB() {
+      try {
+        await init()
+        db = new VectorDB(3, 16, 100) // 3D vectors for demo
+        setStatus('Database initialized!', 'success')
+        log('Vector database ready. Dimensions: 3')
+      } catch (err) {
+        setStatus('Failed to initialize: ' + err.message, 'error')
+      }
+    }
+
+    function setStatus(message, type = 'info') {
+      const statusEl = document.getElementById('status')
+      statusEl.textContent = message
+      statusEl.className = `status ${type}`
+    }
+
+    function log(message) {
+      const output = document.getElementById('output')
+      output.textContent += message + '\n'
+      output.scrollTop = output.scrollHeight
+    }
+
+    function clearOutput() {
+      document.getElementById('output').textContent = ''
+    }
+
+    window.insertRandomVectors = function() {
+      if (!db) return alert('Database not initialized')
+
+      clearOutput()
+      log('Inserting 10 random vectors...\n')
+
+      for (let i = 0; i < 10; i++) {
+        const vector = [Math.random(), Math.random(), Math.random()]
+        const id = `vec_${Date.now()}_${i}`
+        const metadata = { index: i.toString(), timestamp: Date.now().toString() }
+
+        db.insert(id, vector, metadata)
+        log(`Inserted ${id}: [${vector.map(v => v.toFixed(3)).join(', ')}]`)
+      }
+
+      log(`\nTotal vectors: ${db.size()}`)
+      setStatus('Vectors inserted successfully', 'success')
+    }
+
+    window.searchVectors = function() {
+      if (!db) return alert('Database not initialized')
+      if (db.size() === 0) return alert('No vectors in database')
+
+      clearOutput()
+      const query = [Math.random(), Math.random(), Math.random()]
+      log(`Search query: [${query.map(v => v.toFixed(3)).join(', ')}]\n`)
+
+      const results = db.search(query, 5, 50)
+      log(`Found ${results.length} nearest neighbors:\n`)
+
+      results.forEach((result, i) => {
+        log(`${i + 1}. ${result.id}`)
+        log(`   Score: ${result.score.toFixed(4)}`)
+        if (result.metadata) {
+          log(`   Metadata: ${JSON.stringify(result.metadata)}`)
+        }
+        log('')
+      })
+
+      setStatus('Search completed', 'success')
+    }
+
+    window.showStats = function() {
+      if (!db) return alert('Database not initialized')
+
+      clearOutput()
+      log('Database Statistics\n')
+      log(`Total vectors: ${db.size()}`)
+      log(`Dimensions: 3`)
+      log(`Max connections (M): 16`)
+      log(`Construction quality (ef): 100`)
+
+      setStatus('Stats displayed', 'success')
+    }
+
+    window.clearDatabase = function() {
+      if (!db) return alert('Database not initialized')
+
+      if (confirm('Clear all vectors?')) {
+        // Recreate DB
+        db = new VectorDB(3, 16, 100)
+        clearOutput()
+        log('Database cleared')
+        setStatus('Database cleared', 'success')
+      }
+    }
+
+    window.calculateSimilarity = async function() {
+      if (!db) return alert('Database not initialized')
+
+      const vec1Str = document.getElementById('vec1').value
+      const vec2Str = document.getElementById('vec2').value
+
+      try {
+        const vec1 = vec1Str.split(',').map(v => parseFloat(v.trim()))
+        const vec2 = vec2Str.split(',').map(v => parseFloat(v.trim()))
+
+        if (vec1.length !== 3 || vec2.length !== 3) {
+          throw new Error('Vectors must have 3 dimensions')
+        }
+
+        clearOutput()
+        log(`Vector 1: [${vec1.join(', ')}]`)
+        log(`Vector 2: [${vec2.join(', ')}]\n`)
+
+        const cosine = cosine_similarity(vec1, vec2)
+        const euclidean = euclidean_distance(vec1, vec2)
+
+        log(`Cosine Similarity: ${cosine.toFixed(6)}`)
+        log(`Euclidean Distance: ${euclidean.toFixed(6)}`)
+
+        setStatus('Similarity calculated', 'success')
+      } catch (err) {
+        setStatus('Error: ' + err.message, 'error')
+      }
+    }
+
+    // Initialize on load
+    initDB()
+  </script>
+</body>
+</html>
