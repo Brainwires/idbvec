@@ -13,6 +13,9 @@ fi
 echo "Building WASM (bundler target)..."
 wasm-pack build --target bundler --out-dir pkg/bundler
 
+# Remove wasm-pack's .gitignore (contains "*") which causes npm pack to skip the directory
+rm -f pkg/bundler/.gitignore
+
 # Compile TypeScript wrapper
 echo "Compiling TypeScript wrapper..."
 npx tsc
